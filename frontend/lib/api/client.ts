@@ -13,20 +13,18 @@ const shouldLogApi =
 type RequestMetadata = { requestId: string; startedAt: number };
 type ConfigWithMetadata<T> = T & { metadata?: RequestMetadata };
 
-let requestCounter = 0;
-
-const buildRequestId = () => {
+const generateRequestId = () => {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
     return crypto.randomUUID();
   }
-  requestCounter += 1;
-  return `req_${Date.now()}_${requestCounter}`;
+  const highResTime = typeof performance !== 'undefined' ? performance.now().toFixed(3) : Date.now();
+  return `req_${Date.now()}_${highResTime}_${Math.random().toString(36).slice(2, 10)}`;
 };
 
 // Keep a lightweight interceptor for tenant header only. Do NOT add Authorization headers —
 // auth is based on httpOnly cookies set by the backend.
 api.interceptors.request.use((config) => {
-  const requestId = buildRequestId();
+  const requestId = generateRequestId();
   const startedAt = Date.now();
   const metadata = { requestId, startedAt };
   (config as ConfigWithMetadata<typeof config>).metadata = metadata;

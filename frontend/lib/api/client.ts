@@ -7,31 +7,86 @@ const api = axios.create({
   withCredentials: true,
 });
 
+const shouldLogApi =
+  process.env.NODE_ENV !== 'production' && process.env.NEXT_PUBLIC_API_LOGGING !== 'false';
+
+const buildRequestId = () => {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  return `req_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+};
+
 // Keep a lightweight interceptor for tenant header only. Do NOT add Authorization headers —
 // auth is based on httpOnly cookies set by the backend.
 api.interceptors.request.use((config) => {
+  const requestId = buildRequestId();
+  const startedAt = Date.now();
+  const metadata = { requestId, startedAt };
+  (config as typeof config & { metadata?: typeof metadata }).metadata = metadata;
+
   const { currentTenant } = useAuthStore.getState();
   if (currentTenant) {
     const headers = AxiosHeaders.from(config.headers);
     headers.set('X-Tenant-ID', currentTenant.id);
     config.headers = headers;
   }
+
+  if (shouldLogApi) {
+    const method = (config.method || 'get').toUpperCase();
+    console.info('[api][request]', {
+      requestId,
+      method,
+      url: config.url,
+      baseURL: config.baseURL,
+      hasTenantHeader: Boolean(currentTenant),
+    });
+  }
+
   return config;
 });
 
 let isRefreshing = false;
-let failedQueue: Array<{ resolve: (val: any) => void; reject: (err: any) => void }> = [];
+let failedQueue: Array<{ resolve: (val: unknown) => void; reject: (err: unknown) => void }> = [];
 
-const processQueue = (error: any, value: any = null) => {
+const processQueue = (error: unknown, value: unknown = null) => {
   failedQueue.forEach((p) => (error ? p.reject(error) : p.resolve(value)));
   failedQueue = [];
 };
 
 api.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    const metadata = (
+      response.config as typeof response.config & { metadata?: { requestId: string; startedAt: number } }
+    ).metadata;
+
+    if (shouldLogApi) {
+      console.info('[api][response]', {
+        requestId: metadata?.requestId,
+        method: (response.config.method || 'get').toUpperCase(),
+        url: response.config.url,
+        status: response.status,
+        durationMs: metadata ? Date.now() - metadata.startedAt : undefined,
+      });
+    }
+
+    return response;
+  },
   async (error) => {
     const originalRequest = error.config || {};
+    const metadata = (originalRequest as { metadata?: { requestId: string; startedAt: number } }).metadata;
     const skipRedirect = originalRequest.headers?.['X-Skip-Auth-Redirect'] === 'true';
+
+    if (shouldLogApi) {
+      console.error('[api][error]', {
+        requestId: metadata?.requestId,
+        method: (originalRequest.method || 'get').toUpperCase(),
+        url: originalRequest.url,
+        status: error.response?.status,
+        durationMs: metadata ? Date.now() - metadata.startedAt : undefined,
+        message: error.message,
+      });
+    }
 
     if (error.response?.status === 401 && !originalRequest._retry && !originalRequest.url?.includes('/auth/')) {
       if (skipRedirect) return Promise.reject(error);

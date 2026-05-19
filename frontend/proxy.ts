@@ -11,10 +11,11 @@ export default function middleware(request: NextRequest) {
   const isCallbackPage = pathname.startsWith('/callback');
   const isLandingPage = pathname === '/';
   
-  // Inject bearer token for backend auth on API proxy calls.
-  if (isApiProxy && token) {
+  // Always allow API proxy traffic to reach backend routes.
+  // If a token exists, inject it as Bearer for backend auth.
+  if (isApiProxy) {
     const headers = new Headers(request.headers);
-    if (!headers.get('authorization')) {
+    if (token && !headers.get('authorization')) {
       headers.set('authorization', `Bearer ${token}`);
     }
     return NextResponse.next({ request: { headers } });

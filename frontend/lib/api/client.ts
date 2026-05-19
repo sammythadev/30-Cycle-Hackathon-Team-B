@@ -17,8 +17,9 @@ const generateRequestId = () => {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
     return crypto.randomUUID();
   }
+  const timestamp = Date.now();
   const highResTime = typeof performance !== 'undefined' ? performance.now().toFixed(3) : Date.now();
-  return `req_${Date.now()}_${highResTime}_${Math.random().toString(36).slice(2, 10)}`;
+  return `req_${timestamp}_${highResTime}_${Math.random().toString(36).slice(2, 10)}`;
 };
 
 // Keep a lightweight interceptor for tenant header only. Do NOT add Authorization headers —
@@ -51,10 +52,10 @@ api.interceptors.request.use((config) => {
 });
 
 let isRefreshing = false;
-let failedQueue: Array<{ resolve: (val: unknown) => void; reject: (err: unknown) => void }> = [];
+let failedQueue: Array<{ resolve: (value?: unknown) => void; reject: (err: unknown) => void }> = [];
 
-const processQueue = (error: unknown, value: unknown = null) => {
-  failedQueue.forEach((p) => (error ? p.reject(error) : p.resolve(value)));
+const processQueue = (error: unknown) => {
+  failedQueue.forEach((p) => (error ? p.reject(error) : p.resolve()));
   failedQueue = [];
 };
 
@@ -111,10 +112,10 @@ api.interceptors.response.use(
         const user = verifyResp.data;
         useAuthStore.getState().setAuth(user);
 
-        processQueue(null, null);
+        processQueue(null);
         return api(originalRequest);
       } catch (refreshError) {
-        processQueue(refreshError, null);
+        processQueue(refreshError);
         useAuthStore.getState().logout();
         if (typeof window !== 'undefined') window.location.href = '/login';
         return Promise.reject(refreshError);

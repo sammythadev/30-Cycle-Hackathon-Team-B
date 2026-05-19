@@ -10,11 +10,17 @@ const api = axios.create({
 const shouldLogApi =
   process.env.NODE_ENV !== 'production' && process.env.NEXT_PUBLIC_API_LOGGING !== 'false';
 
+type RequestMetadata = { requestId: string; startedAt: number };
+type ConfigWithMetadata<T> = T & { metadata?: RequestMetadata };
+
+let requestCounter = 0;
+
 const buildRequestId = () => {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
     return crypto.randomUUID();
   }
-  return `req_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+  requestCounter += 1;
+  return `req_${Date.now()}_${requestCounter}`;
 };
 
 // Keep a lightweight interceptor for tenant header only. Do NOT add Authorization headers —
@@ -23,7 +29,7 @@ api.interceptors.request.use((config) => {
   const requestId = buildRequestId();
   const startedAt = Date.now();
   const metadata = { requestId, startedAt };
-  (config as typeof config & { metadata?: typeof metadata }).metadata = metadata;
+  (config as ConfigWithMetadata<typeof config>).metadata = metadata;
 
   const { currentTenant } = useAuthStore.getState();
   if (currentTenant) {
@@ -56,9 +62,7 @@ const processQueue = (error: unknown, value: unknown = null) => {
 
 api.interceptors.response.use(
   (response) => {
-    const metadata = (
-      response.config as typeof response.config & { metadata?: { requestId: string; startedAt: number } }
-    ).metadata;
+    const metadata = (response.config as ConfigWithMetadata<typeof response.config>).metadata;
 
     if (shouldLogApi) {
       console.info('[api][response]', {
@@ -74,7 +78,7 @@ api.interceptors.response.use(
   },
   async (error) => {
     const originalRequest = error.config || {};
-    const metadata = (originalRequest as { metadata?: { requestId: string; startedAt: number } }).metadata;
+    const metadata = (originalRequest as ConfigWithMetadata<typeof originalRequest>).metadata;
     const skipRedirect = originalRequest.headers?.['X-Skip-Auth-Redirect'] === 'true';
 
     if (shouldLogApi) {

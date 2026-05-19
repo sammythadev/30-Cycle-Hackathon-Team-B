@@ -18,7 +18,7 @@ const generateRequestId = () => {
     return crypto.randomUUID();
   }
   const timestamp = Date.now();
-  const highResTime = typeof performance !== 'undefined' ? performance.now().toFixed(3) : Date.now();
+  const highResTime = typeof performance !== 'undefined' ? performance.now().toFixed(3) : Date.now().toString();
   return `req_${timestamp}_${highResTime}_${Math.random().toString(36).slice(2, 10)}`;
 };
 
@@ -54,7 +54,7 @@ api.interceptors.request.use((config) => {
 let isRefreshing = false;
 let failedQueue: Array<{ resolve: (value?: unknown) => void; reject: (err: unknown) => void }> = [];
 
-const processQueue = (error: unknown) => {
+const processQueue = (error: unknown | null) => {
   failedQueue.forEach((p) => (error ? p.reject(error) : p.resolve()));
   failedQueue = [];
 };
